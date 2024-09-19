@@ -1,5 +1,6 @@
 DB_NAME = "untappd"
-COLLECTION_NAME = "beers"
+BEERS_COLLECTION_NAME = "beers"
+BREWERIES_COLLECTION_NAME = "breweries"
 BEERS_CHECKIN_URL_FORMAT = "https://untappd.com/user/%s/beers"
 REQUEST_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',

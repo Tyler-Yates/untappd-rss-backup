@@ -1,18 +1,23 @@
+import random
 from dataclasses import asdict
 from datetime import datetime
+from time import sleep
+from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup
 from pymongo.collection import Collection
 
 from main.beer import Beer
+from main.brewery import Brewery
 from main.constants import BEERS_CHECKIN_URL_FORMAT, REQUEST_HEADERS
 
 
 class CheckinUtil:
-    def __init__(self, username: str, collection: Collection):
+    def __init__(self, username: str, beers_collection: Collection, breweries_collection: Collection):
         self.username = username
-        self.collection = collection
+        self.beers_collection = beers_collection
+        self.breweries_collection = breweries_collection
 
     def backup_recent_beers(self):
         url = BEERS_CHECKIN_URL_FORMAT % self.username
@@ -24,9 +29,41 @@ class CheckinUtil:
         print(f"Found {len(beer_elements)} beers to process...")
 
         for beer_element in beer_elements:
-            beer = self.parse_beer_html(beer_element)
-            print(beer)
-            self.collection.update_one({"id": beer.id}, {"$set": asdict(beer)}, upsert=True)
+            self.process_beer_element(beer_element)
+
+    def process_beer_element(self, beer_element):
+        beer = self.parse_beer_html(beer_element)
+        print(beer)
+        self.beers_collection.update_one({"id": beer.id}, {"$set": asdict(beer)}, upsert=True)
+
+        # Update the brewery information if we have not seen it before
+        brewery = self.process_brewery(brewery_id=beer.brewery_id, brewery_name=beer.brewery)
+        if brewery:
+            print(brewery)
+            self.breweries_collection.update_one({"id": brewery.id}, {"$set": asdict(brewery)}, upsert=True)
+
+    def process_brewery(self, brewery_id: str, brewery_name: str) -> Optional[Brewery]:
+        # Don't make a request to Untappd if we already have the brewery info
+        document = self.breweries_collection.find_one({'id': brewery_id})
+        if document:
+            return None
+
+        url = f"https://untappd.com/{brewery_id}"
+        response = requests.get(url, headers=REQUEST_HEADERS)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, 'html5lib')
+
+        details = soup.find(class_="basic").find(class_='name')
+        full_location = details.find(class_="brewery").get_text().strip()
+        brewery_type = details.find(class_="style").get_text().strip()
+
+        # Sleep for a bit so we don't hit Untappd too quickly
+        sleep_seconds = random.uniform(2, 5)
+        print(f"Sleeping {sleep_seconds} seconds")
+        sleep(sleep_seconds)
+
+        return Brewery(id=brewery_id, name=brewery_name, type=brewery_type, full_location=full_location)
 
     @staticmethod
     def parse_beer_html(beer_html) -> Beer:
