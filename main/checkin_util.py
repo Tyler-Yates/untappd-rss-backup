@@ -6,6 +6,7 @@ from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup
+from pymongo import ASCENDING
 from pymongo.collection import Collection
 
 from main.beer import Beer
@@ -17,7 +18,9 @@ class CheckinUtil:
     def __init__(self, username: str, beers_collection: Collection, breweries_collection: Collection):
         self.username = username
         self.beers_collection = beers_collection
+        self.beers_collection.create_index([('id', ASCENDING)], unique=True, background=True)
         self.breweries_collection = breweries_collection
+        self.breweries_collection.create_index([('id', ASCENDING)], unique=True, background=True)
 
     def backup_recent_beers(self):
         url = BEERS_CHECKIN_URL_FORMAT % self.username
