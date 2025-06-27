@@ -12,6 +12,44 @@ from pymongo.collection import Collection
 from main.beer import Beer
 from main.brewery import Brewery
 from main.constants import BEERS_CHECKIN_URL_FORMAT, REQUEST_HEADERS
+from main.date_util import parse_checkin_date
+
+
+def parse_checkin_date(date_str: str) -> datetime:
+    """
+    Parse checkin date string in either old or new format.
+    
+    Old format: "Mon, 26 Jun 2025 14:30:00 +0000"
+    New format: "06/26/25"
+    """
+    date_str = date_str.strip()
+    
+    # Try old format first (with timezone)
+    try:
+        return datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %z")
+    except ValueError:
+        pass
+    
+    # Try old format without timezone
+    try:
+        return datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S")
+    except ValueError:
+        pass
+    
+    # Try new format (MM/DD/YY)
+    try:
+        return datetime.strptime(date_str, "%m/%d/%y")
+    except ValueError:
+        pass
+    
+    # Try new format with full year (MM/DD/YYYY)
+    try:
+        return datetime.strptime(date_str, "%m/%d/%Y")
+    except ValueError:
+        pass
+    
+    # If all formats fail, raise an error with the problematic string
+    raise ValueError(f"Could not parse date string: {date_str}")
 
 
 class CheckinUtil:
@@ -21,11 +59,78 @@ class CheckinUtil:
         self.beers_collection.create_index([('id', ASCENDING)], unique=True, background=True)
         self.breweries_collection = breweries_collection
         self.breweries_collection.create_index([('id', ASCENDING)], unique=True, background=True)
+        
+        # Create a session for better connection management
+        self.session = requests.Session()
+        self.session.headers.update(REQUEST_HEADERS)
+        
+        # Multiple user agents to rotate through
+        self.user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ]
+
+    def _make_request_with_retry(self, url: str, max_retries: int = 3) -> requests.Response:
+        """Make a request with multiple retry strategies"""
+        for attempt in range(max_retries):
+            try:
+                # Rotate user agent
+                user_agent = random.choice(self.user_agents)
+                self.session.headers.update({'User-Agent': user_agent})
+                
+                # Add referer header to look more legitimate
+                if 'untappd.com' in url:
+                    self.session.headers.update({'Referer': 'https://untappd.com/'})
+                
+                # Add random delay
+                sleep(random.uniform(2, 5))
+                
+                print(f"Attempt {attempt + 1}/{max_retries} - Using User-Agent: {user_agent[:50]}...")
+                
+                response = self.session.get(url, timeout=30)
+                
+                if response.status_code == 200:
+                    return response
+                elif response.status_code == 403:
+                    print(f"403 Forbidden on attempt {attempt + 1}")
+                    if attempt < max_retries - 1:
+                        sleep_time = (2 ** attempt) * random.uniform(5, 15)  # Exponential backoff
+                        print(f"Waiting {sleep_time:.1f} seconds before retry...")
+                        sleep(sleep_time)
+                        continue
+                    else:
+                        response.raise_for_status()
+                else:
+                    response.raise_for_status()
+                    
+            except requests.exceptions.RequestException as e:
+                print(f"Request failed on attempt {attempt + 1}: {e}")
+                if attempt < max_retries - 1:
+                    sleep_time = (2 ** attempt) * random.uniform(5, 15)
+                    print(f"Waiting {sleep_time:.1f} seconds before retry...")
+                    sleep(sleep_time)
+                else:
+                    raise
+        
+        raise requests.exceptions.RequestException("All retry attempts failed")
 
     def backup_recent_beers(self):
         url = BEERS_CHECKIN_URL_FORMAT % self.username
-        response = requests.get(url, headers=REQUEST_HEADERS)
-        response.raise_for_status()
+        
+        print(f"Attempting to fetch beers from: {url}")
+        
+        try:
+            response = self._make_request_with_retry(url)
+        except requests.exceptions.RequestException as e:
+            print(f"Failed to fetch beers after all retries: {e}")
+            print("This might indicate that:")
+            print("1. The profile is private or doesn't exist")
+            print("2. Untappd has blocked automated access")
+            print("3. Network connectivity issues")
+            return
 
         soup = BeautifulSoup(response.text, 'html5lib')
         beer_elements = soup.find_all(class_='beer-item')
@@ -52,14 +157,34 @@ class CheckinUtil:
             return None
 
         url = f"https://untappd.com/{brewery_id}"
-        response = requests.get(url, headers=REQUEST_HEADERS)
-        response.raise_for_status()
+        
+        try:
+            response = self._make_request_with_retry(url, max_retries=2)
+        except requests.exceptions.RequestException as e:
+            print(f"Failed to fetch brewery {url}: {e}")
+            return None
 
         soup = BeautifulSoup(response.text, 'html5lib')
 
-        details = soup.find(class_="basic").find(class_='name')
-        full_location = details.find(class_="brewery").get_text().strip()
-        brewery_type = details.find(class_="style").get_text().strip()
+        basic_element = soup.find(class_="basic")
+        if not basic_element:
+            print(f"Could not find basic element for brewery {brewery_id}")
+            return None
+            
+        details = basic_element.find(class_='name')
+        if not details:
+            print(f"Could not find name details for brewery {brewery_id}")
+            return None
+            
+        brewery_location_element = details.find(class_="brewery")
+        brewery_style_element = details.find(class_="style")
+        
+        if not brewery_location_element or not brewery_style_element:
+            print(f"Could not find location or style for brewery {brewery_id}")
+            return None
+            
+        full_location = brewery_location_element.get_text().strip()
+        brewery_type = brewery_style_element.get_text().strip()
 
         # Sleep for a bit so we don't hit Untappd too quickly
         sleep_seconds = random.uniform(2, 5)
@@ -96,7 +221,7 @@ class CheckinUtil:
 
         first_checkin_str = beer_html.find(class_="details").find(
             attrs={"data-href": ":firstCheckin"}).get_text().strip()
-        first_checkin_datetime = datetime.strptime(first_checkin_str, "%a, %d %b %Y %H:%M:%S %z")
+        first_checkin_datetime = parse_checkin_date(first_checkin_str)
 
         beer_html = Beer(
             name=beer_name,

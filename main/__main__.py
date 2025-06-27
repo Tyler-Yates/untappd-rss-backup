@@ -3,9 +3,7 @@ import json
 import requests
 from pymongo import MongoClient
 
-from main.checkin_util import CheckinUtil
 from main.constants import DB_NAME, BREWERIES_COLLECTION_NAME
-
 
 def main():
     with open("config.json", mode="r") as config_file:
@@ -22,6 +20,8 @@ def main():
     db = client[DB_NAME]
     breweries_collection = db[BREWERIES_COLLECTION_NAME]
 
+    from main.selenium_util import SeleniumCheckinUtil
+
     for username, collection_name in ut_username_to_collection_name.items():
         print(f"\nFetching latest beers for {username!r} and saving to collection {collection_name!r}")
 
@@ -30,8 +30,14 @@ def main():
         print(f"Found {beers_collection.count_documents({})} existing beer documents")
         print(f"Found {breweries_collection.count_documents({})} existing brewery documents")
 
-        checkin_util = CheckinUtil(username, beers_collection, breweries_collection)
-        checkin_util.backup_recent_beers()
+        # Use Selenium as the default approach
+        try:
+            selenium_util = SeleniumCheckinUtil(username, beers_collection, breweries_collection)
+            selenium_util.backup_recent_beers()
+            print("✅ Successfully backed up beers using Selenium approach")
+        except Exception as selenium_error:
+            print(f"❌ Selenium approach failed: {selenium_error}")
+            print("Continuing with next user...")
 
         print(f"There are now {beers_collection.count_documents({})} beer documents")
         print(f"There are now {breweries_collection.count_documents({})} brewery documents")
