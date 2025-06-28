@@ -1,4 +1,5 @@
 import json
+import sys
 
 import requests
 from pymongo import MongoClient
@@ -22,6 +23,8 @@ def main():
 
     from main.selenium_util import SeleniumCheckinUtil
 
+    failed_users = []
+
     for username, collection_name in ut_username_to_collection_name.items():
         print(f"\nFetching latest beers for {username!r} and saving to collection {collection_name!r}")
 
@@ -37,6 +40,7 @@ def main():
             print("✅ Successfully backed up beers using Selenium approach")
         except Exception as selenium_error:
             print(f"❌ Selenium approach failed: {selenium_error}")
+            failed_users.append(username)
             print("Continuing with next user...")
 
         print(f"There are now {beers_collection.count_documents({})} beer documents")
@@ -44,6 +48,13 @@ def main():
 
     requests.get(healthcheck_url)
     print(f"Pinged {healthcheck_url}")
+
+    # Exit with code 1 if any user failed
+    if failed_users:
+        print(f"\n❌ Failed to process the following users: {', '.join(failed_users)}")
+        sys.exit(1)
+    else:
+        print("\n✅ All users processed successfully")
 
 
 if __name__ == '__main__':
