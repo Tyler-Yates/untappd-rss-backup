@@ -37,17 +37,17 @@ def main():
         try:
             selenium_util = SeleniumCheckinUtil(username, beers_collection, breweries_collection)
             selenium_util.backup_recent_beers()
-            print("✅ Successfully backed up beers using Selenium approach")
+            print("\n✅ Successfully backed up beers using Selenium approach")
         except Exception as selenium_error:
-            print(f"❌ Selenium approach failed: {selenium_error}")
+            print(f"\n❌ Selenium approach failed: {selenium_error}")
             failed_users.append(username)
             print("Continuing with next user...")
 
-        print(f"There are now {beers_collection.count_documents({})} beer documents")
+        print(f"\nThere are now {beers_collection.count_documents({})} beer documents")
         print(f"There are now {breweries_collection.count_documents({})} brewery documents")
 
     requests.get(healthcheck_url)
-    print(f"Pinged {healthcheck_url}")
+    print(f"\nPinged {healthcheck_url}")
 
     # Exit with code 1 if any user failed
     if failed_users:

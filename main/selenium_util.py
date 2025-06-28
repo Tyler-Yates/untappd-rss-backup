@@ -137,10 +137,20 @@ class SeleniumCheckinUtil:
     def process_beer_element(self, beer_element):
         """Process a single beer element"""
         beer, checkin_url = self.parse_beer_html(beer_element)
+
+        print(f"\nProcessing beer {beer.name!r}...")
+        
+        # Check if beer exists in database (only call find_one once)
+        existing_beer = self.beers_collection.find_one({"id": beer.id})
         
         # Check if we need to fetch the full datetime
-        if self._needs_full_datetime(beer):
+        if self._needs_full_datetime(existing_beer):
             self._fetch_full_datetime(beer, checkin_url)
+        else:
+            # Use the existing complete datetime from the database
+            if existing_beer and existing_beer.get('first_checkin'):
+                beer.first_checkin = existing_beer['first_checkin']
+                print(f"Using existing complete datetime for beer {beer.id}: {beer.first_checkin}")
         
         print(beer)
         self.beers_collection.update_one({"id": beer.id}, {"$set": asdict(beer)}, upsert=True)
@@ -151,11 +161,9 @@ class SeleniumCheckinUtil:
             print(brewery)
             self.breweries_collection.update_one({"id": brewery.id}, {"$set": asdict(brewery)}, upsert=True)
 
-    def _needs_full_datetime(self, beer: Beer) -> bool:
+    @staticmethod
+    def _needs_full_datetime(existing_beer: dict | None) -> bool:
         """Check if we need to fetch the full datetime for this beer"""
-        # Check if beer exists in database
-        existing_beer = self.beers_collection.find_one({"id": beer.id})
-        
         if not existing_beer:
             # New beer - always fetch full datetime
             return True
