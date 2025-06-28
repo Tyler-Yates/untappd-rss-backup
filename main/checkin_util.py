@@ -99,7 +99,8 @@ class CheckinUtil:
         beer_elements = soup.find_all(class_='beer-item')
         print(f"Found {len(beer_elements)} beers to process...")
 
-        for beer_element in beer_elements:
+        # Process beers from bottom to top (oldest first)
+        for beer_element in reversed(beer_elements):
             self.process_beer_element(beer_element)
 
     def process_beer_element(self, beer_element):
