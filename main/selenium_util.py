@@ -74,17 +74,16 @@ class SeleniumCheckinUtil:
         """Setup Chrome WebDriver with anti-detection options"""
         chrome_options = Options()
         
+        # Headless mode (using newer syntax for better compatibility)
+        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--disable-gpu")
+        
         # Anti-detection options
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
-        
-        # Random window size to appear more human
-        width = random.randint(1200, 1920)
-        height = random.randint(800, 1080)
-        chrome_options.add_argument(f"--window-size={width},{height}")
         
         # User agent
         user_agents = [
@@ -95,7 +94,8 @@ class SeleniumCheckinUtil:
         chrome_options.add_argument(f"--user-agent={random.choice(user_agents)}")
         
         try:
-            service = Service(ChromeDriverManager().install())
+            # Use system-installed ChromeDriver instead of downloading
+            service = Service("chromedriver")
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             
             # Execute script to remove webdriver property
@@ -103,7 +103,8 @@ class SeleniumCheckinUtil:
             
         except Exception as e:
             print(f"Failed to setup Chrome WebDriver: {e}")
-            print("Make sure Chrome browser is installed on your system")
+            print("Make sure Chrome browser and ChromeDriver are installed on your system")
+            print("For Raspberry Pi: sudo apt-get install chromium-browser chromium-chromedriver")
             raise
 
     def backup_recent_beers(self):
