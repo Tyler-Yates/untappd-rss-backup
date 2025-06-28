@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
 
 @dataclass
@@ -12,3 +13,4 @@ class Beer:
     style: str
     abv: float
     first_checkin: datetime
+    checkin_url: Optional[str] = None

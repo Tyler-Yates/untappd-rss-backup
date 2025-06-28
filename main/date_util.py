@@ -7,6 +7,7 @@ def parse_checkin_date(date_str: str) -> datetime:
     
     Old format: "Mon, 26 Jun 2025 14:30:00 +0000"
     New format: "06/26/25"
+    Check-in page format: "Sat, 28 Jun 2025 00:20:00 +0000"
     """
     date_str = date_str.strip()
     
