@@ -136,12 +136,12 @@ class SeleniumCheckinUtil:
 
     def process_beer_element(self, beer_element):
         """Process a single beer element"""
-        beer = self.parse_beer_html(beer_element)
-
+        beer, checkin_url = self.parse_beer_html(beer_element)
+        
         # Check if we need to fetch the full datetime
         if self._needs_full_datetime(beer):
-            beer = self._fetch_full_datetime(beer)
-
+            self._fetch_full_datetime(beer, checkin_url)
+        
         print(beer)
         self.beers_collection.update_one({"id": beer.id}, {"$set": asdict(beer)}, upsert=True)
 
@@ -155,52 +155,52 @@ class SeleniumCheckinUtil:
         """Check if we need to fetch the full datetime for this beer"""
         # Check if beer exists in database
         existing_beer = self.beers_collection.find_one({"id": beer.id})
-
+        
         if not existing_beer:
             # New beer - always fetch full datetime
             return True
-
+        
         # Check if existing beer has incomplete datetime (no hours, minutes, seconds)
         existing_datetime = existing_beer.get('first_checkin')
         if not existing_datetime:
             return True
-
+            
         # If the datetime has no time component (hours, minutes, seconds are 0), fetch full datetime
-        return (existing_datetime.hour == 0 and
-                existing_datetime.minute == 0 and
+        return (existing_datetime.hour == 0 and 
+                existing_datetime.minute == 0 and 
                 existing_datetime.second == 0)
 
-    def _fetch_full_datetime(self, beer: Beer) -> Beer:
-        """Fetch the full datetime from the check-in page"""
+    def _fetch_full_datetime(self, beer: Beer, checkin_url: str | None) -> None:
+        """Fetch the full datetime from the check-in page and update the beer object"""
         if not self.driver:
-            return beer
-
+            return
+            
         # Use the extracted check-in URL from the beer object
-        if not beer.checkin_url:
+        if not checkin_url:
             print(f"No check-in URL available for beer {beer.id}")
-            return beer
-
-        checkin_url = f"https://untappd.com{beer.checkin_url}"
-
+            return
+            
+        full_checkin_url = f"https://untappd.com{checkin_url}"
+        
         try:
-            print(f"Fetching full datetime from: {checkin_url}")
-            self.driver.get(checkin_url)
-
+            print(f"Fetching full datetime from: {full_checkin_url}")
+            self.driver.get(full_checkin_url)
+            
             # Add random delay after navigation to avoid detection
             sleep(random.uniform(3, 7))
-
+            
             # Wait for page to load
             WebDriverWait(self.driver, 20).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "time"))
             )
-
+            
             # Add random delay
             sleep(random.uniform(2, 4))
-
+            
             # Get page source and parse
             page_source = self.driver.page_source
             soup = BeautifulSoup(page_source, 'html5lib')
-
+            
             # Find the time element with data-gregtime attribute
             time_element = soup.find('p', class_='time')
             if time_element and isinstance(time_element, Tag):
@@ -216,11 +216,9 @@ class SeleniumCheckinUtil:
                     print(f"Could not find valid data-gregtime attribute for beer {beer.id}")
             else:
                 print(f"Could not find time element with data-gregtime for beer {beer.id}")
-
+                
         except Exception as e:
             print(f"Error fetching full datetime for beer {beer.id}: {e}")
-
-        return beer
 
     def process_brewery(self, brewery_id: str, brewery_name: str) -> Optional[Brewery]:
         """Process brewery information using Selenium"""
@@ -277,8 +275,8 @@ class SeleniumCheckinUtil:
             return None
 
     @staticmethod
-    def parse_beer_html(beer_html) -> Beer:
-        """Parse beer HTML element (same as original)"""
+    def parse_beer_html(beer_html) -> tuple[Beer, str | None]:
+        """Parse beer HTML element and return beer object and checkin URL"""
         beer_link_element = beer_html.find(class_="name").find("a")
         beer_link = beer_link_element.get("href")
         beer_id = int(beer_link.split("/")[-1])
@@ -306,13 +304,13 @@ class SeleniumCheckinUtil:
         first_checkin_str = beer_html.find(class_="details").find(
             attrs={"data-href": ":firstCheckin"}).get_text().strip()
         first_checkin_datetime = parse_checkin_date(first_checkin_str)
-
+        
         # Extract the check-in URL from the first check-in link
         first_checkin_link = beer_html.find(class_="details").find(
             attrs={"data-href": ":firstCheckin"})
         checkin_url = first_checkin_link.get("href") if first_checkin_link else None
 
-        beer_html = Beer(
+        beer = Beer(
             name=beer_name,
             id=beer_id,
             brewery=brewery_name,
@@ -320,10 +318,9 @@ class SeleniumCheckinUtil:
             rating=rating,
             style=style,
             abv=abv,
-            first_checkin=first_checkin_datetime,
-            checkin_url=checkin_url
+            first_checkin=first_checkin_datetime
         )
-        return beer_html
+        return beer, checkin_url
 
     def cleanup(self):
         """Clean up WebDriver resources"""
