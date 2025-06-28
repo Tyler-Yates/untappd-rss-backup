@@ -1,6 +1,5 @@
 import random
 from dataclasses import asdict
-from datetime import datetime
 from time import sleep
 from typing import Optional
 
@@ -19,43 +18,6 @@ from main.beer import Beer
 from main.brewery import Brewery
 from main.constants import BEERS_CHECKIN_URL_FORMAT
 from main.date_util import parse_checkin_date
-
-
-def parse_checkin_date(date_str: str) -> datetime:
-    """
-    Parse checkin date string in either old or new format.
-    
-    Old format: "Mon, 26 Jun 2025 14:30:00 +0000"
-    New format: "06/26/25"
-    """
-    date_str = date_str.strip()
-    
-    # Try old format first (with timezone)
-    try:
-        return datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %z")
-    except ValueError:
-        pass
-    
-    # Try old format without timezone
-    try:
-        return datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S")
-    except ValueError:
-        pass
-    
-    # Try new format (MM/DD/YY)
-    try:
-        return datetime.strptime(date_str, "%m/%d/%y")
-    except ValueError:
-        pass
-    
-    # Try new format with full year (MM/DD/YYYY)
-    try:
-        return datetime.strptime(date_str, "%m/%d/%Y")
-    except ValueError:
-        pass
-    
-    # If all formats fail, raise an error with the problematic string
-    raise ValueError(f"Could not parse date string: {date_str}")
 
 
 class SeleniumCheckinUtil:
@@ -95,7 +57,7 @@ class SeleniumCheckinUtil:
         
         try:
             # Use system-installed ChromeDriver instead of downloading
-            service = Service("chromedriver")
+            service = Service("/usr/bin/chromedriver")
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
             
             # Execute script to remove webdriver property
