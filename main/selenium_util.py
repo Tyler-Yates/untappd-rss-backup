@@ -261,13 +261,13 @@ class SeleniumCheckinUtil:
                 print(f"Could not find basic element for brewery {brewery_id}")
                 return None
 
-            details = basic_element.find('div', class_='name')
+            details = basic_element.find(class_='name')
             if not details:
                 print(f"Could not find name details for brewery {brewery_id}")
                 return None
 
-            brewery_location_element = details.find('div', class_="brewery")
-            brewery_style_element = details.find('div', class_="style")
+            brewery_location_element = details.find(class_="brewery")
+            brewery_style_element = details.find(class_="style")
 
             if not brewery_location_element or not brewery_style_element:
                 print(f"Could not find location or style for brewery {brewery_id}")
