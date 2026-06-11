@@ -4,10 +4,10 @@ from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Tag
 
-from main.beer_checkin import BeerCheckin
-from main.brewery import Brewery
-from main.date_util import parse_checkin_date
-from main.selenium_util import SeleniumUtil
+from data.beer_checkin import BeerCheckin
+from data.brewery import Brewery
+from util.date_util import parse_checkin_date
+from util.selenium_util import SeleniumUtil
 
 
 class UntappdPagesUtil:

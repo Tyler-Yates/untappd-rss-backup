@@ -4,7 +4,9 @@ import sys
 import requests
 from pymongo import MongoClient
 
-from main.constants import DB_NAME, BREWERIES_COLLECTION_NAME
+from data.constants import DB_NAME, BREWERIES_COLLECTION_NAME
+from util.rss_util import RSSCheckinUtil
+
 
 def main():
     with open("config.json", mode="r") as config_file:
@@ -21,8 +23,6 @@ def main():
     db = client[DB_NAME]
     breweries_collection = db[BREWERIES_COLLECTION_NAME]
 
-    from main.rss_util import RSSCheckinUtil
-
     failed_users = []
 
     for rss_url, collection_name in rss_url_to_collection_name.items():
@@ -36,7 +36,7 @@ def main():
         # Use RSS feed approach
         try:
             rss_util = RSSCheckinUtil(rss_url, beers_collection, breweries_collection)
-            rss_util.backup_recent_beers()
+            rss_util.backup_recent_checkins()
             print("\n✅ Successfully backed up beers using RSS approach")
         except Exception as rss_error:
             print(f"\n❌ RSS approach failed: {rss_error}")

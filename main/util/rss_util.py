@@ -2,15 +2,12 @@ from dataclasses import asdict
 from typing import Optional
 
 import feedparser
-import requests
-from bs4 import BeautifulSoup
 from pymongo import ASCENDING
 from pymongo.collection import Collection
 
-from main.beer import Beer
-from main.brewery import Brewery
-from main.constants import REQUEST_HEADERS
-from main.untappd_pages_util import UntappdPagesUtil
+from data.beer import Beer
+from data.brewery import Brewery
+from util.untappd_pages_util import UntappdPagesUtil
 
 
 class RSSCheckinUtil:
@@ -23,7 +20,7 @@ class RSSCheckinUtil:
 
         self.untappd_pages_util = UntappdPagesUtil()
 
-    def backup_recent_beers(self):
+    def backup_recent_checkins(self):
         """Backup recent beers using RSS feed"""
         print(f"Fetching RSS feed from: {self.rss_url}")
 
