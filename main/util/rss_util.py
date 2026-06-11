@@ -57,7 +57,6 @@ class RSSCheckinUtil:
         if existing_document:
             print("Beer already exists in the database. Just updating rating.")
             self.beers_collection.update_one({"id": beer_checkin.id}, {"$set": {"rating": beer_checkin.rating}})
-            return
         else:
             # This is a brand-new beer so we need to fetch the full details
             beer_details = self.untappd_pages_util.get_beer_details(beer_checkin.id)
