@@ -3,5 +3,4 @@ requests
 beautifulsoup4
 html5lib
 brotli
-selenium
-webdriver-manager
+feedparser
