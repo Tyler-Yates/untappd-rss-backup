@@ -5,8 +5,6 @@ from time import sleep
 from typing import Optional
 
 from bs4 import BeautifulSoup, Tag
-from pymongo import ASCENDING
-from pymongo.collection import Collection
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -17,18 +15,11 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 from main.beer import Beer
 from main.brewery import Brewery
-from main.constants import BEERS_CHECKIN_URL_FORMAT
 from main.date_util import parse_checkin_date
 
 
-class SeleniumCheckinUtil:
-    def __init__(self, username: str, beers_collection: Collection, breweries_collection: Collection):
-        self.username = username
-        self.beers_collection = beers_collection
-        self.beers_collection.create_index([('id', ASCENDING)], unique=True, background=True)
-        self.breweries_collection = breweries_collection
-        self.breweries_collection.create_index([('id', ASCENDING)], unique=True, background=True)
-
+class SeleniumUtil:
+    def __init__(self):
         # Initialize Selenium WebDriver
         self.driver = None
         self._setup_driver()
@@ -73,49 +64,6 @@ class SeleniumCheckinUtil:
             print("For Raspberry Pi: sudo apt-get install chromium-browser chromium-chromedriver")
             raise
 
-    def backup_recent_beers(self):
-        """Backup recent beers using Selenium"""
-        if not self.driver:
-            print("WebDriver not initialized")
-            return
-
-        url = BEERS_CHECKIN_URL_FORMAT % self.username
-        print(f"Navigating to: {url}")
-
-        try:
-            # Navigate to the page
-            self.driver.get(url)
-
-            # Wait for page to load
-            WebDriverWait(self.driver, 30).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "beer-item"))
-            )
-
-            # Add some random scrolling to appear more human
-            self._human_like_scrolling()
-
-            # Get the page source and parse with BeautifulSoup
-            page_source = self.driver.page_source
-            soup = BeautifulSoup(page_source, 'html5lib')
-
-            beer_elements = soup.find_all(class_='beer-item')
-            print(f"Found {len(beer_elements)} beers to process...")
-
-            # Process beers from bottom to top (oldest first)
-            for beer_element in reversed(beer_elements):
-                self.process_beer_element(beer_element)
-
-        except Exception as e:
-            print(f"Error during beer backup: {e}")
-            # Take screenshot for debugging
-            try:
-                self.driver.save_screenshot("error_screenshot.png")
-                print("Screenshot saved as error_screenshot.png")
-            except:
-                pass
-        finally:
-            self.cleanup()
-
     def _human_like_scrolling(self):
         """Simulate human-like scrolling behavior"""
         if not self.driver:
@@ -134,49 +82,33 @@ class SeleniumCheckinUtil:
         except Exception as e:
             print(f"Error during scrolling: {e}")
 
-    def process_beer_element(self, beer_element):
-        """Process a single beer element"""
-        beer, checkin_url = self.parse_beer_html(beer_element)
+    def get_page_source(self, url: str, wait_for_element: str = "body") -> str:
+        """Load a URL, wait for page to load, scroll like a human, and return page source"""
+        if not self.driver:
+            print("!!! WebDriver not initialized !!!")
+            raise ValueError("WebDriver not initialized")
 
-        print(f"\nProcessing beer {beer.name!r}...")
-        
-        # Check if beer exists in database (only call find_one once)
-        existing_beer = self.beers_collection.find_one({"id": beer.id})
-        
-        # Check if we need to fetch the full datetime
-        if self._needs_full_datetime(existing_beer):
-            self._fetch_full_datetime(beer, checkin_url)
-        else:
-            # Use the existing complete datetime from the database
-            if existing_beer and existing_beer.get('first_checkin'):
-                beer.first_checkin = existing_beer['first_checkin']
-                print(f"Using existing complete datetime for beer {beer.id}: {beer.first_checkin}")
-        
-        print(beer)
-        self.beers_collection.update_one({"id": beer.id}, {"$set": asdict(beer)}, upsert=True)
+        try:
+            print(f"Loading page: {url}")
+            self.driver.get(url)
 
-        # Update the brewery information if we have not seen it before
-        brewery = self.process_brewery(brewery_id=beer.brewery_id, brewery_name=beer.brewery)
-        if brewery:
-            print(brewery)
-            self.breweries_collection.update_one({"id": brewery.id}, {"$set": asdict(brewery)}, upsert=True)
+            # Wait for page to load
+            WebDriverWait(self.driver, 30).until(
+                EC.presence_of_element_located((By.TAG_NAME, wait_for_element))
+            )
 
-    @staticmethod
-    def _needs_full_datetime(existing_beer: dict | None) -> bool:
-        """Check if we need to fetch the full datetime for this beer"""
-        if not existing_beer:
-            # New beer - always fetch full datetime
-            return True
-        
-        # Check if existing beer has incomplete datetime (no hours, minutes, seconds)
-        existing_datetime = existing_beer.get('first_checkin')
-        if not existing_datetime:
-            return True
-            
-        # If the datetime has no time component (hours, minutes, seconds are 0), fetch full datetime
-        return (existing_datetime.hour == 0 and 
-                existing_datetime.minute == 0 and 
-                existing_datetime.second == 0)
+            # Add random delay to appear more human
+            sleep(random.uniform(1, 3))
+
+            # Scroll like a human
+            self._human_like_scrolling()
+
+            # Return page source
+            return self.driver.page_source
+
+        except Exception as e:
+            print(f"Error loading page: {e}")
+            raise ValueError(f"Error loading page: {e}")
 
     def _fetch_full_datetime(self, beer: Beer, checkin_url: str | None) -> None:
         """Fetch the full datetime from the check-in page and update the beer object"""
@@ -281,54 +213,6 @@ class SeleniumCheckinUtil:
         except Exception as e:
             print(f"Error processing brewery {brewery_id}: {e}")
             return None
-
-    @staticmethod
-    def parse_beer_html(beer_html) -> tuple[Beer, str | None]:
-        """Parse beer HTML element and return beer object and checkin URL"""
-        beer_link_element = beer_html.find(class_="name").find("a")
-        beer_link = beer_link_element.get("href")
-        beer_id = int(beer_link.split("/")[-1])
-        beer_name = beer_link_element.get_text().strip()
-
-        brewery_link_element = beer_html.find(class_="brewery").find("a")
-        brewery_link = brewery_link_element.get("href")
-        brewery_id = brewery_link.lstrip("/")
-        brewery_name = brewery_link_element.get_text().strip()
-
-        style = beer_html.find(class_="style").get_text().strip()
-
-        rating = -1
-        rating_elements = beer_html.find(class_="ratings").find_all('p')
-        for rating_element in rating_elements:
-            rating_text = rating_element.get_text()
-            if rating_text.startswith("Their Rating"):
-                rating = float(rating_text.lstrip("Their Rating (").rstrip(")"))
-
-        try:
-            abv = float(beer_html.find(class_="abv").get_text().strip().rstrip("% ABV"))
-        except ValueError:
-            abv = -1
-
-        first_checkin_str = beer_html.find(class_="details").find(
-            attrs={"data-href": ":firstCheckin"}).get_text().strip()
-        first_checkin_datetime = parse_checkin_date(first_checkin_str)
-        
-        # Extract the check-in URL from the first check-in link
-        first_checkin_link = beer_html.find(class_="details").find(
-            attrs={"data-href": ":firstCheckin"})
-        checkin_url = first_checkin_link.get("href") if first_checkin_link else None
-
-        beer = Beer(
-            name=beer_name,
-            id=beer_id,
-            brewery=brewery_name,
-            brewery_id=brewery_id,
-            rating=rating,
-            style=style,
-            abv=abv,
-            first_checkin=first_checkin_datetime
-        )
-        return beer, checkin_url
 
     def cleanup(self):
         """Clean up WebDriver resources"""
