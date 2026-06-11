@@ -56,7 +56,6 @@ class UntappdPagesUtil:
                     try:
                         full_datetime = parse_checkin_date(full_datetime_str)
                         beer_checkin.checkin_date = full_datetime
-                        print(f"Updated datetime to: {full_datetime}")
                     except ValueError as e:
                         print(f"Could not parse full datetime '{full_datetime_str}': {e}")
                 else:
