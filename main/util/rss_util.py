@@ -96,9 +96,8 @@ class RSSCheckinUtil:
         if document:
             return None
 
-        brewery_url = f"https://untappd.com/{brewery_id}"
         try:
-            return self.untappd_pages_util.get_brewery(brewery_url)
+            return self.untappd_pages_util.get_brewery(brewery_id)
 
         except Exception as e:
             print(f"Error processing brewery {brewery_id}: {e}")

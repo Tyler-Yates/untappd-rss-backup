@@ -114,10 +114,10 @@ class UntappdPagesUtil:
             abv=abv,
         )
 
-    def get_brewery(self, brewery_url: str) -> Optional[Brewery]:
+    def get_brewery(self, brewery_id: str) -> Optional[Brewery]:
         """Process brewery information using Selenium"""
         try:
-            brewery_url = self._to_full_url(brewery_url)
+            brewery_url = self._to_full_url(brewery_id)
             page_source = self.selenium_util.get_page_source(brewery_url)
             soup = BeautifulSoup(page_source, 'html5lib')
 
@@ -142,9 +142,6 @@ class UntappdPagesUtil:
             brewery_name = brewery_name_element.get_text(strip=True)
             full_location = brewery_location_element.get_text().strip()
             brewery_type = brewery_style_element.get_text().strip()
-
-            path = urlparse(brewery_url).path
-            brewery_id = path.rstrip("/").split("/")[-1].strip()
 
             return Brewery(id=brewery_id, name=brewery_name, type=brewery_type, full_location=full_location)
 
