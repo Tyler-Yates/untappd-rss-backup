@@ -4,8 +4,8 @@ import sys
 import requests
 from pymongo import MongoClient
 
-from data.constants import DB_NAME, BREWERIES_COLLECTION_NAME
-from util.rss_util import RSSCheckinUtil
+from .data.constants import DB_NAME, BREWERIES_COLLECTION_NAME
+from .util.rss_util import RSSCheckinUtil
 
 
 def main():
