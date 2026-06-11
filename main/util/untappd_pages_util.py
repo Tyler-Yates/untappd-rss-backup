@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 from bs4 import BeautifulSoup, Tag
 
 from data.beer_checkin import BeerCheckin
+from data.beer_details import BeerDetails
 from data.brewery import Brewery
 from util.date_util import parse_checkin_date
 from util.selenium_util import SeleniumUtil
@@ -20,61 +21,66 @@ class UntappdPagesUtil:
         self.selenium_util = SeleniumUtil()
 
     def get_beer_checkin(self, checkin_url: str) -> Optional[BeerCheckin]:
-        """Fetch all beer details from a checkin page. This involves going to the actual beer page."""
+        """
+        Fetch all beer details from a checkin page.
+        This does NOT get the actual details of the beer itself.
+        """
         try:
             checkin_page_source = self.selenium_util.get_page_source(checkin_url)
             soup = BeautifulSoup(checkin_page_source, 'html5lib')
-
             beer_div = soup.select_one("div.beer")
-            if not beer_div:
-                print(f"Could not find beer details for checkin {checkin_url}")
-                return None
 
+            # Beer details
             beer_details_link = beer_div.select_one("p a")
-            if not beer_details_link:
-                print(f"Could not find beer details link for checkin {checkin_url}")
-                return None
 
+            beer_name = beer_details_link.get_text(strip=True)
             beer_details_url = str(beer_details_link["href"])
-            if not beer_details_url:
-                print(f"Could not find beer details URL for checkin {checkin_url}")
-                return None
 
-            beer_checkin = self.get_beer_from_link(beer_details_url)
+            path = urlparse(beer_details_url).path
+            beer_id = int(path.rstrip("/").split("/")[-1].strip())
 
-            #### Now we need to add the per-user data onto the beer object
+            # Brewery Details
+            brewery_link = beer_div.select_one("span a")
+            brewery_name = brewery_link.get_text(strip=True)
+            brewery_id = brewery_link["href"].lstrip("/")
+
             # Rating
             caps = soup.find("div", class_="caps")
             rating = float(caps.get("data-rating")) if caps else -1
-            beer_checkin.rating = rating
 
             # Check-in date
+            checkin_datetime = None
             time_element = soup.find('p', class_='time')
             if time_element and isinstance(time_element, Tag):
                 full_datetime_str = time_element.get('data-gregtime')
-                if full_datetime_str and isinstance(full_datetime_str, str):
-                    try:
-                        full_datetime = parse_checkin_date(full_datetime_str)
-                        beer_checkin.checkin_date = full_datetime
-                    except ValueError as e:
-                        print(f"Could not parse full datetime '{full_datetime_str}': {e}")
-                else:
-                    print(f"Could not find valid data-gregtime attribute for beer {beer_checkin.id}")
-            else:
-                print(f"Could not find time element with data-gregtime for beer {beer_checkin.id}")
+                try:
+                    checkin_datetime = parse_checkin_date(full_datetime_str)
+                except ValueError as e:
+                    print(f"Could not parse full datetime '{full_datetime_str}': {e}")
 
-            return beer_checkin
+            if not checkin_datetime:
+                print(f"Could not find check-in date for beer {beer_id}")
+                return None
+
+            return BeerCheckin(
+                name=beer_name,
+                id=beer_id,
+                brewery=brewery_name,
+                brewery_id=brewery_id,
+                rating=rating,
+                checkin_date=checkin_datetime
+            )
 
         except Exception as e:
             print(f"Error fetching beer details: {e}")
             return None
 
-    def get_beer_from_link(self, beer_details_url: str) -> Optional[BeerCheckin]:
+    def get_beer_details(self, beer_id: int) -> Optional[BeerDetails]:
         """
         Fetch beer details from a beer details page.
         The returned object will NOT have per-user details like ratings.
         """
-        beer_details_url = self._to_full_url(beer_details_url)
+        beer_details_url = self._to_full_url(f"/beer/{beer_id}")
         beer_page_source = self.selenium_util.get_page_source(beer_details_url)
         soup = BeautifulSoup(beer_page_source, 'html5lib')
 
@@ -99,17 +105,14 @@ class UntappdPagesUtil:
         except ValueError:
             abv = -1
 
-        beer_checkin = BeerCheckin(
+        return BeerDetails(
             name=beer_name,
             id=beer_id,
             brewery=brewery_name,
             brewery_id=brewery_id,
-            rating=-1,
             style=style,
             abv=abv,
-            checkin_date=datetime.fromtimestamp(0, tz=timezone.utc)
         )
-        return beer_checkin
 
     def get_brewery(self, brewery_url: str) -> Optional[Brewery]:
         """Process brewery information using Selenium"""

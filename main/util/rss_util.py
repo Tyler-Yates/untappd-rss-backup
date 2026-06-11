@@ -54,11 +54,17 @@ class RSSCheckinUtil:
 
         existing_document = self.beers_collection.find_one({"id": beer_checkin.id})
 
-        # The beer checkin may have a later date. We want to preserve the first checkin date.
+        # If we already have a document for this beer, don't go fetch the details. Just update the rating.
         if existing_document:
-            first_checkin = existing_document["first_checkin"]
-        else:
-            first_checkin = beer_checkin.checkin_date
+            self.beers_collection.update_one({"id": beer_checkin.id}, {"$set": {"rating": beer_checkin.rating}})
+            return
+
+        # This is a brand-new beer so we need to fetch the full details
+        beer_details = self.untappd_pages_util.get_beer_details(beer_checkin.id)
+
+        if not beer_details:
+            print(f"Could not get beer details for {beer_checkin.id}")
+            return
 
         # Construct the beer object to save to the database with the correct date
         beer = Beer(
@@ -67,9 +73,9 @@ class RSSCheckinUtil:
             brewery=beer_checkin.brewery,
             brewery_id=beer_checkin.brewery_id,
             rating=beer_checkin.rating,
-            style=beer_checkin.style,
-            abv=beer_checkin.abv,
-            first_checkin=first_checkin
+            style=beer_details.style,
+            abv=beer_details.abv,
+            first_checkin=beer_checkin.checkin_date,
         )
 
         # Upsert into the database which will handle new beers or updating beers already there.

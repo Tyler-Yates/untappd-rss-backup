@@ -1,12 +1,11 @@
 from dataclasses import dataclass
-from datetime import datetime
 
 
 @dataclass
-class BeerCheckin:
+class BeerDetails:
     name: str
     id: int
     brewery: str
     brewery_id: str
-    rating: float
-    checkin_date: datetime
+    style: str
+    abv: float
