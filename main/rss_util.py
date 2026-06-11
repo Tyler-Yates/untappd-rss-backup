@@ -1,4 +1,3 @@
-import re
 from dataclasses import asdict
 from typing import Optional
 
@@ -40,22 +39,13 @@ class RSSCheckinUtil:
 
     def process_rss_entry(self, entry):
         """Process a single RSS entry"""
-        # Parse beer name and brewery name from title
-        # Title format: "User is drinking a BeerName by Brewery at Location"
-        title = entry.title
-        beer_name, brewery_name = self.parse_title(title)
-
-        # Parse timestamp
-        pub_date = entry.get('published')
-        checkin_datetime = parse_checkin_date(pub_date) if pub_date else None
-
-        # Get checkin URL
+        # Get checkin URL from RSS entry
         checkin_url = entry.link
 
-        print(f"\nProcessing checkin for beer {beer_name!r}...")
+        print(f"\nProcessing checkin from: {checkin_url}")
 
-        # Visit checkin page to get full beer details
-        beer = self.fetch_beer_details(checkin_url, beer_name, brewery_name, checkin_datetime)
+        # Visit checkin page to get all beer details
+        beer = self.fetch_beer_details(checkin_url)
 
         if beer:
             print(beer)
@@ -66,31 +56,12 @@ class RSSCheckinUtil:
             if brewery:
                 print(brewery)
                 self.breweries_collection.update_one({"id": brewery.id}, {"$set": asdict(brewery)}, upsert=True)
+        else:
+            print("❌ Could not fetch beer details")
 
     @staticmethod
-    def parse_title(title: str) -> tuple[str, str]:
-        """Parse beer name and brewery name from RSS title"""
-        # Title format: "User is drinking a BeerName by Brewery at Location"
-        # Use regex to extract beer name and brewery
-        match = re.match(r'.* is drinking (?:a|an) (.+?) by (.+?) at .+', title)
-        if match:
-            beer_name = match.group(1).strip()
-            brewery_name = match.group(2).strip()
-            return beer_name, brewery_name
-
-        # Fallback: split by " by "
-        parts = title.split(" by ")
-        if len(parts) >= 2:
-            beer_name = parts[0].replace(" is drinking a ", "").replace(" is drinking an ", "").strip()
-            brewery_name = parts[1].split(" at ")[0].strip()
-            return beer_name, brewery_name
-
-        return "Unknown Beer", "Unknown Brewery"
-
-    @staticmethod
-    def fetch_beer_details(checkin_url: str, beer_name: str, brewery_name: str, checkin_datetime) -> Optional[
-        Beer]:
-        """Fetch full beer details from checkin page and beer page"""
+    def fetch_beer_details(checkin_url: str) -> Optional[Beer]:
+        """Fetch all beer details from checkin page"""
         try:
             print(f"Fetching beer details from: {checkin_url}")
             response = requests.get(checkin_url, headers=REQUEST_HEADERS, timeout=30)
@@ -101,15 +72,16 @@ class RSSCheckinUtil:
             # Extract beer link from checkin page
             beer_div = soup.find('div', class_='beer')
             if not beer_div:
-                print(f"Could not find beer div for {beer_name}")
+                print(f"Could not find beer div")
                 return None
 
             beer_link = beer_div.find('a', href=lambda x: x and '/b/' in x)
             if not beer_link:
-                print(f"Could not find beer link for {beer_name}")
+                print(f"Could not find beer link")
                 return None
 
             beer_url = beer_link.get('href', '')
+            beer_name = beer_link.get_text().strip()
             beer_id = -1
             if beer_url:
                 # Extract numeric ID from URL (last part)
@@ -122,16 +94,25 @@ class RSSCheckinUtil:
             # Extract brewery link from checkin page
             brewery_span = beer_div.find('span')
             if not brewery_span:
-                print(f"Could not find brewery span for {brewery_name}")
+                print(f"Could not find brewery span")
                 return None
 
             brewery_link = brewery_span.find('a')
             if not brewery_link:
-                print(f"Could not find brewery link for {brewery_name}")
+                print(f"Could not find brewery link")
                 return None
 
             brewery_url = brewery_link.get('href', '')
+            brewery_name = brewery_link.get_text().strip()
             brewery_id = brewery_url.lstrip('/') if brewery_url else ''
+
+            # Extract timestamp from checkin page
+            checkin_datetime = None
+            time_element = soup.find('p', class_='time')
+            if time_element:
+                time_str = time_element.get('data-gregtime')
+                if time_str:
+                    checkin_datetime = parse_checkin_date(time_str)
 
             # Now visit the beer page to get style, ABV, and rating
             full_beer_url = f"https://untappd.com{beer_url}"
@@ -149,7 +130,7 @@ class RSSCheckinUtil:
             )
 
         except Exception as e:
-            print(f"Error fetching beer details for {beer_name}: {e}")
+            print(f"Error fetching beer details: {e}")
             return None
 
     @staticmethod
