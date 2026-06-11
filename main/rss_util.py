@@ -10,7 +10,7 @@ from pymongo.collection import Collection
 from main.beer import Beer
 from main.brewery import Brewery
 from main.constants import REQUEST_HEADERS
-from main.date_util import parse_checkin_date
+from main.untappd_pages_util import UntappdPagesUtil
 
 
 class RSSCheckinUtil:
@@ -20,6 +20,8 @@ class RSSCheckinUtil:
         self.beers_collection.create_index([('id', ASCENDING)], unique=True, background=True)
         self.breweries_collection = breweries_collection
         self.breweries_collection.create_index([('id', ASCENDING)], unique=True, background=True)
+
+        self.untappd_pages_util = UntappdPagesUtil()
 
     def backup_recent_beers(self):
         """Backup recent beers using RSS feed"""
@@ -45,19 +47,42 @@ class RSSCheckinUtil:
         print(f"\nProcessing checkin from: {checkin_url}")
 
         # Visit checkin page to get all beer details
-        beer = self.fetch_beer_details(checkin_url)
+        beer_checkin = self.untappd_pages_util.get_beer_checkin(checkin_url)
 
-        if beer:
-            print(beer)
-            self.beers_collection.update_one({"id": beer.id}, {"$set": asdict(beer)}, upsert=True)
-
-            # Update brewery information if we have not seen it before
-            brewery = self.process_brewery(brewery_id=beer.brewery_id, brewery_name=beer.brewery)
-            if brewery:
-                print(brewery)
-                self.breweries_collection.update_one({"id": brewery.id}, {"$set": asdict(brewery)}, upsert=True)
-        else:
+        if not beer_checkin:
             print("❌ Could not fetch beer details")
+            return
+
+        print(beer_checkin)
+
+        existing_document = self.beers_collection.find_one({"id": beer_checkin.id})
+
+        # The beer checkin may have a later date. We want to preserve the first checkin date.
+        if existing_document:
+            first_checkin = existing_document["first_checkin"]
+        else:
+            first_checkin = beer_checkin.checkin_date
+
+        # Construct the beer object to save to the database with the correct date
+        beer = Beer(
+            name=beer_checkin.name,
+            id=beer_checkin.id,
+            brewery=beer_checkin.brewery,
+            brewery_id=beer_checkin.brewery_id,
+            rating=beer_checkin.rating,
+            style=beer_checkin.style,
+            abv=beer_checkin.abv,
+            first_checkin=first_checkin
+        )
+
+        # Upsert into the database which will handle new beers or updating beers already there.
+        self.beers_collection.update_one({"id": beer.id}, {"$set": asdict(beer)}, upsert=True)
+
+        # Update brewery information if we have not seen it before
+        brewery = self.process_brewery(brewery_id=beer.brewery_id, brewery_name=beer.brewery)
+        if brewery:
+            print(brewery)
+            self.breweries_collection.update_one({"id": brewery.id}, {"$set": asdict(brewery)}, upsert=True)
 
     def process_brewery(self, brewery_id: str, brewery_name: str) -> Optional[Brewery]:
         """Process brewery information using requests"""
