@@ -28,8 +28,7 @@ class RSSCheckinUtil:
             feed = feedparser.parse(self.rss_url)
             print(f"Found {len(feed.entries)} checkins in RSS feed")
 
-            # Process entries from oldest to newest
-            for entry in reversed(feed.entries):
+            for entry in feed.entries:
                 self.process_rss_entry(entry)
 
         except Exception as e:
