@@ -61,6 +61,7 @@ class RSSCheckinUtil:
         else:
             # This is a brand-new beer so we need to fetch the full details
             beer_details = self.untappd_pages_util.get_beer_details(beer_checkin.id)
+            print(f"Beer details: {beer_details}")
 
             if not beer_details:
                 print(f"Could not get beer details for {beer_checkin.id}")
@@ -77,6 +78,7 @@ class RSSCheckinUtil:
                 abv=beer_details.abv,
                 first_checkin=beer_checkin.checkin_date,
             )
+            print(f"Final beer document: {beer}")
 
             # Upsert into the database which will handle new beers or updating beers already there.
             self.beers_collection.update_one({"id": beer.id}, {"$set": asdict(beer)}, upsert=True)
