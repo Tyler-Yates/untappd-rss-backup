@@ -5,9 +5,9 @@ import feedparser
 from pymongo import ASCENDING
 from pymongo.collection import Collection
 
-from data.beer import Beer
-from data.brewery import Brewery
-from util.untappd_pages_util import UntappdPagesUtil
+from ..data.beer import Beer
+from ..data.brewery import Brewery
+from .untappd_pages_util import UntappdPagesUtil
 
 
 class RSSCheckinUtil:
