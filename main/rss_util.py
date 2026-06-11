@@ -79,48 +79,21 @@ class RSSCheckinUtil:
         self.beers_collection.update_one({"id": beer.id}, {"$set": asdict(beer)}, upsert=True)
 
         # Update brewery information if we have not seen it before
-        brewery = self.process_brewery(brewery_id=beer.brewery_id, brewery_name=beer.brewery)
+        brewery = self.process_brewery(brewery_id=beer.brewery_id)
         if brewery:
             print(brewery)
             self.breweries_collection.update_one({"id": brewery.id}, {"$set": asdict(brewery)}, upsert=True)
 
-    def process_brewery(self, brewery_id: str, brewery_name: str) -> Optional[Brewery]:
+    def process_brewery(self, brewery_id: str) -> Optional[Brewery]:
         """Process brewery information using requests"""
         # Don't make a request to Untappd if we already have the brewery info
         document = self.breweries_collection.find_one({'id': brewery_id})
         if document:
             return None
 
-        url = f"https://untappd.com/{brewery_id}"
-
+        brewery_url = f"https://untappd.com/{brewery_id}"
         try:
-            print(f"Fetching brewery details from: {url}")
-            response = requests.get(url, headers=REQUEST_HEADERS, timeout=30)
-            response.raise_for_status()
-
-            soup = BeautifulSoup(response.text, 'html5lib')
-
-            basic_element = soup.find(class_="basic")
-            if not basic_element:
-                print(f"Could not find basic element for brewery {brewery_id}")
-                return None
-
-            details = basic_element.find(class_='name')
-            if not details:
-                print(f"Could not find name details for brewery {brewery_id}")
-                return None
-
-            brewery_location_element = details.find(class_="brewery")
-            brewery_style_element = details.find(class_="style")
-
-            if not brewery_location_element or not brewery_style_element:
-                print(f"Could not find location or style for brewery {brewery_id}")
-                return None
-
-            full_location = brewery_location_element.get_text().strip()
-            brewery_type = brewery_style_element.get_text().strip()
-
-            return Brewery(id=brewery_id, name=brewery_name, type=brewery_type, full_location=full_location)
+            return self.untappd_pages_util.get_brewery(brewery_url)
 
         except Exception as e:
             print(f"Error processing brewery {brewery_id}: {e}")

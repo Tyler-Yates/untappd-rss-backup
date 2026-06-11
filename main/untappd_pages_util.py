@@ -1,15 +1,9 @@
-import random
 from datetime import datetime, timezone
-from telnetlib import EC
-from time import sleep
 from typing import Optional
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup, Tag
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.wait import WebDriverWait
 
-from main.beer import Beer
 from main.beer_checkin import BeerCheckin
 from main.brewery import Brewery
 from main.date_util import parse_checkin_date
@@ -46,13 +40,13 @@ class UntappdPagesUtil:
                 print(f"Could not find beer details URL for checkin {checkin_url}")
                 return None
 
-            beer = self.get_beer_from_link(beer_details_url)
+            beer_checkin = self.get_beer_from_link(beer_details_url)
 
             #### Now we need to add the per-user data onto the beer object
             # Rating
             caps = soup.find("div", class_="caps")
             rating = float(caps.get("data-rating")) if caps else -1
-            beer.rating = rating
+            beer_checkin.rating = rating
 
             # Check-in date
             time_element = soup.find('p', class_='time')
@@ -61,16 +55,16 @@ class UntappdPagesUtil:
                 if full_datetime_str and isinstance(full_datetime_str, str):
                     try:
                         full_datetime = parse_checkin_date(full_datetime_str)
-                        beer.checkin_date = full_datetime
+                        beer_checkin.checkin_date = full_datetime
                         print(f"Updated datetime to: {full_datetime}")
                     except ValueError as e:
                         print(f"Could not parse full datetime '{full_datetime_str}': {e}")
                 else:
-                    print(f"Could not find valid data-gregtime attribute for beer {beer.id}")
+                    print(f"Could not find valid data-gregtime attribute for beer {beer_checkin.id}")
             else:
-                print(f"Could not find time element with data-gregtime for beer {beer.id}")
+                print(f"Could not find time element with data-gregtime for beer {beer_checkin.id}")
 
-            return beer
+            return beer_checkin
 
         except Exception as e:
             print(f"Error fetching beer details: {e}")
@@ -81,25 +75,18 @@ class UntappdPagesUtil:
         Fetch beer details from a beer details page.
         The returned object will NOT have per-user details like ratings.
         """
+        beer_details_url = self._to_full_url(beer_details_url)
         beer_page_source = self.selenium_util.get_page_source(beer_details_url)
         soup = BeautifulSoup(beer_page_source, 'html5lib')
 
-        content = soup.find(class_="content")
-        if not content:
+        beer_id = int(beer_details_url.rstrip("/").split("/")[-1].strip())
+
+        beer_html = soup.find(class_="content")
+        if not beer_html:
             return None
 
-        return self._parse_beer_detail_html(content)
-
-    @staticmethod
-    def _parse_beer_detail_html(beer_html) -> Optional[BeerCheckin]:
-        """
-        Parse beer HTML element and return beer object.
-        The returned object will NOT have per-user details like ratings.
-        """
-        beer_link_element = beer_html.find(class_="name").find("a")
-        beer_link = beer_link_element.get("href")
-        beer_id = int(beer_link.split("/")[-1])
-        beer_name = beer_link_element.get_text().strip()
+        beer_name_element = beer_html.find("div", class_="name")
+        beer_name = beer_name_element.find("h1").get_text(strip=True)
 
         brewery_link_element = beer_html.find(class_="brewery").find("a")
         brewery_link = brewery_link_element.get("href")
@@ -113,7 +100,7 @@ class UntappdPagesUtil:
         except ValueError:
             abv = -1
 
-        beer = BeerCheckin(
+        beer_checkin = BeerCheckin(
             name=beer_name,
             id=beer_id,
             brewery=brewery_name,
@@ -123,11 +110,12 @@ class UntappdPagesUtil:
             abv=abv,
             checkin_date=datetime.fromtimestamp(0, tz=timezone.utc)
         )
-        return beer
+        return beer_checkin
 
-    def process_brewery(self, brewery_url: str) -> Optional[Brewery]:
+    def get_brewery(self, brewery_url: str) -> Optional[Brewery]:
         """Process brewery information using Selenium"""
         try:
+            brewery_url = self._to_full_url(brewery_url)
             page_source = self.selenium_util.get_page_source(brewery_url)
             soup = BeautifulSoup(page_source, 'html5lib')
 
@@ -161,3 +149,15 @@ class UntappdPagesUtil:
         except Exception as e:
             print(f"Error processing brewery {brewery_url}: {e}")
             return None
+
+    @staticmethod
+    def _to_full_url(path: str) -> str:
+        base = "https://untappd.com"
+
+        if path.startswith("http://") or path.startswith("https://"):
+            return path
+
+        if not path.startswith("/"):
+            path = "/" + path
+
+        return base + path
