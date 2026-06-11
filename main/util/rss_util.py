@@ -56,33 +56,34 @@ class RSSCheckinUtil:
 
         # If we already have a document for this beer, don't go fetch the details. Just update the rating.
         if existing_document:
+            print("Beer already exists in the database. Just updating rating.")
             self.beers_collection.update_one({"id": beer_checkin.id}, {"$set": {"rating": beer_checkin.rating}})
             return
+        else:
+            # This is a brand-new beer so we need to fetch the full details
+            beer_details = self.untappd_pages_util.get_beer_details(beer_checkin.id)
 
-        # This is a brand-new beer so we need to fetch the full details
-        beer_details = self.untappd_pages_util.get_beer_details(beer_checkin.id)
+            if not beer_details:
+                print(f"Could not get beer details for {beer_checkin.id}")
+                return
 
-        if not beer_details:
-            print(f"Could not get beer details for {beer_checkin.id}")
-            return
+            # Construct the beer object to save to the database with the correct date
+            beer = Beer(
+                name=beer_checkin.name,
+                id=beer_checkin.id,
+                brewery=beer_checkin.brewery,
+                brewery_id=beer_checkin.brewery_id,
+                rating=beer_checkin.rating,
+                style=beer_details.style,
+                abv=beer_details.abv,
+                first_checkin=beer_checkin.checkin_date,
+            )
 
-        # Construct the beer object to save to the database with the correct date
-        beer = Beer(
-            name=beer_checkin.name,
-            id=beer_checkin.id,
-            brewery=beer_checkin.brewery,
-            brewery_id=beer_checkin.brewery_id,
-            rating=beer_checkin.rating,
-            style=beer_details.style,
-            abv=beer_details.abv,
-            first_checkin=beer_checkin.checkin_date,
-        )
-
-        # Upsert into the database which will handle new beers or updating beers already there.
-        self.beers_collection.update_one({"id": beer.id}, {"$set": asdict(beer)}, upsert=True)
+            # Upsert into the database which will handle new beers or updating beers already there.
+            self.beers_collection.update_one({"id": beer.id}, {"$set": asdict(beer)}, upsert=True)
 
         # Update brewery information if we have not seen it before
-        brewery = self.process_brewery(brewery_id=beer.brewery_id)
+        brewery = self.process_brewery(brewery_id=beer_checkin.brewery_id)
         if brewery:
             print(brewery)
             self.breweries_collection.update_one({"id": brewery.id}, {"$set": asdict(brewery)}, upsert=True)
